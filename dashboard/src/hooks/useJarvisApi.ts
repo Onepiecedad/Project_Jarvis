@@ -5,7 +5,7 @@ import { useChatStore } from '@/stores/chatStore';
 
 // Use Next.js proxy to avoid CORS issues
 const JARVIS_API_URL = '/api/jarvis';
-const POLL_INTERVAL = 1000; // Poll every second
+const POLL_INTERVAL = 3000; // Poll every 3 seconds to reduce connection overload
 
 interface LogEntry {
     no: number;
@@ -23,6 +23,8 @@ interface PollResponse {
     logs: LogEntry[];
     log_guid: string;
     log_version: number;
+    log_progress: number;
+    log_progress_active: boolean;
     paused: boolean;
 }
 
@@ -32,13 +34,19 @@ interface MessageResponse {
 }
 
 export function useJarvisApi() {
-    const [contextId, setContextId] = useState<string>('');
+    const [contextId, setContextIdState] = useState<string>('');
+    const contextIdRef = useRef<string>(''); // Keep in sync for polling
     const [isConnected, setIsConnected] = useState(false);
-    const [csrfToken, setCsrfToken] = useState<string>('');
     const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const logFromRef = useRef<number>(0);
     const isPollingRef = useRef(false);
     const shownLogIdsRef = useRef<Set<string>>(new Set()); // Track shown messages
+
+    // Wrapper to update both state and ref
+    const setContextId = (id: string) => {
+        contextIdRef.current = id;
+        setContextIdState(id);
+    };
 
     const {
         setConnectionState,
@@ -46,9 +54,12 @@ export function useJarvisApi() {
         setIsThinking,
     } = useChatStore();
 
+    // CSRF token state
+    const csrfTokenRef = useRef<string>('');
+
     // Get CSRF token
     const getCsrfToken = useCallback(async (): Promise<string> => {
-        if (csrfToken) return csrfToken;
+        if (csrfTokenRef.current) return csrfTokenRef.current;
 
         try {
             const response = await fetch(`${JARVIS_API_URL}/csrf_token`, {
@@ -56,16 +67,18 @@ export function useJarvisApi() {
             });
             if (response.ok) {
                 const data = await response.json();
-                setCsrfToken(data.token);
-                return data.token;
+                if (data.ok && data.token) {
+                    csrfTokenRef.current = data.token;
+                    return data.token;
+                }
             }
         } catch (error) {
             console.error('Failed to get CSRF token:', error);
         }
         return '';
-    }, [csrfToken]);
+    }, []);
 
-    // Make authenticated API request
+    // Make API request with CSRF token and credentials
     const apiRequest = useCallback(async (endpoint: string, data?: Record<string, unknown>) => {
         const token = await getCsrfToken();
 
@@ -80,6 +93,24 @@ export function useJarvisApi() {
         });
 
         if (!response.ok) {
+            // If CSRF error, clear token and retry once
+            if (response.status === 403) {
+                csrfTokenRef.current = '';
+                const newToken = await getCsrfToken();
+                const retryResponse = await fetch(`${JARVIS_API_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': newToken,
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(data || {}),
+                });
+                if (!retryResponse.ok) {
+                    throw new Error(`API error: ${retryResponse.status}`);
+                }
+                return retryResponse.json();
+            }
             throw new Error(`API error: ${response.status}`);
         }
 
@@ -93,35 +124,43 @@ export function useJarvisApi() {
 
         try {
             const response: PollResponse = await apiRequest('/poll', {
-                context: contextId,
+                context: contextIdRef.current,
                 log_from: logFromRef.current,
             });
 
             setIsConnected(true);
             setConnectionState('connected');
 
-            // Update context if we got one
-            if (response.context && !contextId) {
+            // Always update context ID from poll response to stay in sync
+            if (response.context && response.context !== contextIdRef.current) {
                 setContextId(response.context);
+                // Reset log position when context changes
+                logFromRef.current = 0;
+                shownLogIdsRef.current.clear();
             }
+
+            // Use Agent Zero's progress indicator for thinking state
+            setIsThinking(response.log_progress_active || false);
 
             // Process new log entries
             if (response.logs && response.logs.length > 0) {
                 for (const log of response.logs) {
-                    logFromRef.current = Math.max(logFromRef.current, log.no + 1);
+                    // Use log.no as unique identifier since log.id can be null
+                    const logKey = `${response.context}-${log.no}`;
 
-                    // Skip if we've already shown this log
-                    if (shownLogIdsRef.current.has(log.id)) {
+                    // Skip if we've already processed this log
+                    if (shownLogIdsRef.current.has(logKey)) {
                         continue;
                     }
+
+                    // Update log position
+                    logFromRef.current = Math.max(logFromRef.current, log.no + 1);
 
                     // Handle different log types
                     switch (log.type) {
                         case 'response':
                             // This is the final response from JARVIS
                             if (log.content && !log.temp) {
-                                setIsThinking(false);
-
                                 // Try to parse JSON response and extract text
                                 let displayContent = log.content;
                                 try {
@@ -136,7 +175,7 @@ export function useJarvisApi() {
                                 }
 
                                 if (displayContent) {
-                                    shownLogIdsRef.current.add(log.id);
+                                    shownLogIdsRef.current.add(logKey);
                                     addMessage({
                                         role: 'assistant',
                                         content: displayContent,
@@ -151,8 +190,7 @@ export function useJarvisApi() {
                             if (log.content && !log.temp) {
                                 // Check if it starts with { - if so, it's internal thinking
                                 if (!log.content.trim().startsWith('{')) {
-                                    shownLogIdsRef.current.add(log.id);
-                                    setIsThinking(false);
+                                    shownLogIdsRef.current.add(logKey);
                                     addMessage({
                                         role: 'assistant',
                                         content: log.content,
@@ -162,23 +200,20 @@ export function useJarvisApi() {
                             break;
 
                         case 'tool':
-                            // Tool execution - could show in UI
+                            // Tool execution - just log for now
                             console.log('Tool:', log.heading, log.content);
                             break;
 
                         case 'hint':
                         case 'info':
                         case 'util':
-                            // Thinking/info messages - just set thinking state
-                            if (log.temp) {
-                                setIsThinking(true);
-                            }
+                            // These are handled by log_progress_active
                             break;
 
                         case 'error':
                         case 'warning':
                             if (log.content && !log.temp) {
-                                shownLogIdsRef.current.add(log.id);
+                                shownLogIdsRef.current.add(logKey);
                                 addMessage({
                                     role: 'assistant',
                                     content: `⚠️ ${log.content}`,
@@ -195,7 +230,7 @@ export function useJarvisApi() {
         } finally {
             isPollingRef.current = false;
         }
-    }, [apiRequest, contextId, addMessage, setIsThinking, setConnectionState]);
+    }, [apiRequest, addMessage, setIsThinking, setConnectionState]);
 
     // Send message to JARVIS
     const sendMessage = useCallback(async (content: string) => {
@@ -212,12 +247,14 @@ export function useJarvisApi() {
         try {
             const response: MessageResponse = await apiRequest('/message', {
                 text: content,
-                context: contextId,
+                context: contextIdRef.current,
             });
 
-            // Update context ID if received
-            if (response.context) {
+            // Update context ID if received (and reset logs if it changed)
+            if (response.context && response.context !== contextIdRef.current) {
                 setContextId(response.context);
+                logFromRef.current = 0;
+                shownLogIdsRef.current.clear();
             }
 
             return true;
@@ -230,7 +267,7 @@ export function useJarvisApi() {
             });
             return false;
         }
-    }, [apiRequest, contextId, addMessage, setIsThinking]);
+    }, [apiRequest, addMessage, setIsThinking]);
 
     // Check connection
     const checkConnection = useCallback(async () => {

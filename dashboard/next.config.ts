@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Proxy to Agent Zero to avoid CORS issues
   async rewrites() {
     return [
       {
