@@ -112,17 +112,49 @@ export function useJarvisApi() {
 
                     // Handle different log types
                     switch (log.type) {
-                        case 'agent':
                         case 'response':
+                            // This is the final response from JARVIS
                             if (log.content && !log.temp) {
                                 setIsThinking(false);
+
+                                // Try to parse JSON response and extract text
+                                let displayContent = log.content;
+                                try {
+                                    const parsed = JSON.parse(log.content);
+                                    if (parsed.tool_args?.text) {
+                                        displayContent = parsed.tool_args.text;
+                                    } else if (parsed.text) {
+                                        displayContent = parsed.text;
+                                    }
+                                } catch {
+                                    // Not JSON, use content as-is
+                                }
+
                                 // Check if we already have this message
-                                const exists = messages.some(m => m.content === log.content);
-                                if (!exists) {
+                                const exists = messages.some(m => m.content === displayContent);
+                                if (!exists && displayContent) {
                                     addMessage({
                                         role: 'assistant',
-                                        content: log.content,
+                                        content: displayContent,
                                     });
+                                }
+                            }
+                            break;
+
+                        case 'agent':
+                            // Agent thinking - only show if it's a final formatted response
+                            // Skip raw JSON thinking logs
+                            if (log.content && !log.temp) {
+                                // Check if it starts with { - if so, it's internal thinking
+                                if (!log.content.trim().startsWith('{')) {
+                                    const exists = messages.some(m => m.content === log.content);
+                                    if (!exists) {
+                                        setIsThinking(false);
+                                        addMessage({
+                                            role: 'assistant',
+                                            content: log.content,
+                                        });
+                                    }
                                 }
                             }
                             break;
@@ -134,15 +166,16 @@ export function useJarvisApi() {
 
                         case 'hint':
                         case 'info':
-                            // Thinking/info messages
-                            if (log.content && log.temp) {
+                        case 'util':
+                            // Thinking/info messages - just set thinking state
+                            if (log.temp) {
                                 setIsThinking(true);
                             }
                             break;
 
                         case 'error':
                         case 'warning':
-                            if (log.content) {
+                            if (log.content && !log.temp) {
                                 addMessage({
                                     role: 'assistant',
                                     content: `⚠️ ${log.content}`,
