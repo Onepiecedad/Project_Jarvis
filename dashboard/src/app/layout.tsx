@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
-  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
@@ -19,11 +18,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="sv">
-      <body className={`${inter.variable} font-sans antialiased`}>
+    <html lang="sv" suppressHydrationWarning>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning>
         {children}
       </body>
     </html>
   );
 }
-

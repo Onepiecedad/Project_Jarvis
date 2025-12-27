@@ -38,12 +38,12 @@ export function useJarvisApi() {
     const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const logFromRef = useRef<number>(0);
     const isPollingRef = useRef(false);
+    const shownLogIdsRef = useRef<Set<string>>(new Set()); // Track shown messages
 
     const {
         setConnectionState,
         addMessage,
         setIsThinking,
-        messages,
     } = useChatStore();
 
     // Get CSRF token
@@ -110,6 +110,11 @@ export function useJarvisApi() {
                 for (const log of response.logs) {
                     logFromRef.current = Math.max(logFromRef.current, log.no + 1);
 
+                    // Skip if we've already shown this log
+                    if (shownLogIdsRef.current.has(log.id)) {
+                        continue;
+                    }
+
                     // Handle different log types
                     switch (log.type) {
                         case 'response':
@@ -130,9 +135,8 @@ export function useJarvisApi() {
                                     // Not JSON, use content as-is
                                 }
 
-                                // Check if we already have this message
-                                const exists = messages.some(m => m.content === displayContent);
-                                if (!exists && displayContent) {
+                                if (displayContent) {
+                                    shownLogIdsRef.current.add(log.id);
                                     addMessage({
                                         role: 'assistant',
                                         content: displayContent,
@@ -147,14 +151,12 @@ export function useJarvisApi() {
                             if (log.content && !log.temp) {
                                 // Check if it starts with { - if so, it's internal thinking
                                 if (!log.content.trim().startsWith('{')) {
-                                    const exists = messages.some(m => m.content === log.content);
-                                    if (!exists) {
-                                        setIsThinking(false);
-                                        addMessage({
-                                            role: 'assistant',
-                                            content: log.content,
-                                        });
-                                    }
+                                    shownLogIdsRef.current.add(log.id);
+                                    setIsThinking(false);
+                                    addMessage({
+                                        role: 'assistant',
+                                        content: log.content,
+                                    });
                                 }
                             }
                             break;
@@ -176,6 +178,7 @@ export function useJarvisApi() {
                         case 'error':
                         case 'warning':
                             if (log.content && !log.temp) {
+                                shownLogIdsRef.current.add(log.id);
                                 addMessage({
                                     role: 'assistant',
                                     content: `⚠️ ${log.content}`,
@@ -192,7 +195,7 @@ export function useJarvisApi() {
         } finally {
             isPollingRef.current = false;
         }
-    }, [apiRequest, contextId, addMessage, setIsThinking, setConnectionState, messages]);
+    }, [apiRequest, contextId, addMessage, setIsThinking, setConnectionState]);
 
     // Send message to JARVIS
     const sendMessage = useCallback(async (content: string) => {
