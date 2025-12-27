@@ -6,3 +6,9 @@ services:
       - ./agent-zero:/a0
     ports:
       - "50080:80"
+    environment:
+      - MEMORY_BACKEND=supabase
+      - SUPABASE_URL=https://bqtcedtstisonblzrfsn.supabase.co
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxdGNlZHRzdGlzb25ibHpyZnNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2NTY5NDAsImV4cCI6MjA4MjIzMjk0MH0.ETkS-zGHlslaykxRQkmvqAIrmT_sNgDTEPkXsjbDhki3wYviI8DXW0sFG4O4Q
+      - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxdGNlZHRzdGlzb25ibHpyZnNuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjY1Njk0MCwiZXhwIjoyMDgyMjMyOTQwfQ.QWhXRvoSceNgDTEPkXsjbDhki3wYviI8DXW0sFG4O4Q
+      - OPENAI_API_KEY=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

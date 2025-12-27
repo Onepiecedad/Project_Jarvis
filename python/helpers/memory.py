@@ -18,7 +18,12 @@ from langchain_community.vectorstores.utils import (
 )
 from langchain_core.embeddings import Embeddings
 
-import os, json
+import os
+import json
+
+# Memory backend selection - check environment variable MEMORY_BACKEND
+# Options: "supabase" (cloud) or "local" (FAISS)
+# Auto-detects Supabase if SUPABASE_URL is set
 
 import numpy as np
 
@@ -573,3 +578,89 @@ def get_knowledge_subdirs_by_memory_subdir(
 
         default.append(get_project_meta_folder(memory_subdir[9:], "knowledge"))
     return default
+
+
+# =========================================
+# MEMORY BACKEND SELECTOR
+# =========================================
+
+def get_memory_backend() -> str:
+    """
+    Get the configured memory backend.
+    
+    Returns:
+        'supabase' or 'local'
+    """
+    backend = os.environ.get("MEMORY_BACKEND", "").lower()
+    
+    if backend == "supabase":
+        return "supabase"
+    elif backend == "local":
+        return "local"
+    else:
+        # Auto-detect: use supabase if configured, else local
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if supabase_url and supabase_key:
+            return "supabase"
+        return "local"
+
+
+async def get_memory(agent: Agent):
+    """
+    Get the appropriate memory backend for the agent.
+    
+    This function automatically selects between Supabase and local FAISS
+    based on the MEMORY_BACKEND environment variable:
+    - "supabase": Use Supabase cloud storage with pgvector
+    - "local": Use local FAISS index
+    - (not set): Auto-detect based on SUPABASE_URL presence
+    
+    Args:
+        agent: The Agent instance
+        
+    Returns:
+        Memory instance (either SupabaseMemory or local Memory)
+    """
+    backend = get_memory_backend()
+    
+    if backend == "supabase":
+        try:
+            from python.helpers.memory_supabase import SupabaseMemory
+            PrintStyle.standard(f"Using Supabase memory backend")
+            return await SupabaseMemory.get(agent)
+        except Exception as e:
+            PrintStyle.error(f"Supabase memory failed, falling back to local: {e}")
+            return await Memory.get(agent)
+    else:
+        PrintStyle.standard(f"Using local FAISS memory backend")
+        return await Memory.get(agent)
+
+
+async def get_memory_by_subdir(
+    memory_subdir: str,
+    log_item: LogItem | None = None,
+    preload_knowledge: bool = True,
+):
+    """
+    Get the appropriate memory backend by subdirectory.
+    
+    Args:
+        memory_subdir: Memory subdirectory name
+        log_item: Optional log item
+        preload_knowledge: Whether to preload knowledge files
+        
+    Returns:
+        Memory instance
+    """
+    backend = get_memory_backend()
+    
+    if backend == "supabase":
+        try:
+            from python.helpers.memory_supabase import SupabaseMemory
+            return await SupabaseMemory.get_by_subdir(memory_subdir, log_item)
+        except Exception as e:
+            PrintStyle.error(f"Supabase memory failed, falling back to local: {e}")
+            return await Memory.get_by_subdir(memory_subdir, log_item, preload_knowledge)
+    else:
+        return await Memory.get_by_subdir(memory_subdir, log_item, preload_knowledge)
