@@ -71,3 +71,24 @@ Arguments:
 - language: "sv" or "en"
 
 **Important**: Always use cms_get_content first to see current values before updating.
+
+### cms_get_media
+
+Gets media/images from a CMS page and section, displays them in the gallery panel.
+
+~~~json
+{
+    "thoughts": ["I will show the images from the hero section"],
+    "tool_name": "cms_get_media",
+    "tool_args": {
+        "page": "home",
+        "section": "hero"
+    }
+}
+~~~
+
+Arguments:
+
+- page (required): Page slug (e.g., "home", "about")
+- section (optional): Section key to filter by
+- show (optional): Whether to show in the gallery panel (default: true)

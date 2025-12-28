@@ -52,6 +52,7 @@ export function useJarvisApi() {
         setConnectionState,
         addMessage,
         setIsThinking,
+        setDynamicView,
     } = useChatStore();
 
     // CSRF token state
@@ -200,8 +201,42 @@ export function useJarvisApi() {
                             break;
 
                         case 'tool':
-                            // Tool execution - just log for now
-                            console.log('Tool:', log.heading, log.content);
+                            // Tool execution - check for show_view commands
+                            console.log('Tool:', log.heading, log.content, log.kvps);
+
+                            // Check if this is a show_view or cms_get_media tool call via kvps
+                            if ((log.heading?.includes('show_view') || log.heading?.includes('cms_get_media')) && log.kvps) {
+                                const viewType = log.kvps.type as string;
+                                const title = log.kvps.title as string;
+                                const subtitle = log.kvps.subtitle as string;
+                                const data = log.kvps.data;
+
+                                if (viewType && data) {
+                                    setDynamicView({
+                                        type: viewType as 'table' | 'card' | 'list' | 'gallery' | 'empty',
+                                        title: title || undefined,
+                                        subtitle: subtitle || undefined,
+                                        data: data,
+                                    });
+                                }
+                            }
+
+                            // Also try to parse view data from tool content (for tool results)
+                            if (log.content) {
+                                try {
+                                    const parsed = JSON.parse(log.content);
+                                    if (parsed.view) {
+                                        setDynamicView({
+                                            type: parsed.view.type as 'table' | 'card' | 'list' | 'gallery' | 'empty',
+                                            title: parsed.view.title || undefined,
+                                            subtitle: parsed.view.subtitle || undefined,
+                                            data: parsed.view.data,
+                                        });
+                                    }
+                                } catch {
+                                    // Not JSON or no view data
+                                }
+                            }
                             break;
 
                         case 'hint':

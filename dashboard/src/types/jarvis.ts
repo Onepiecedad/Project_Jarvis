@@ -39,8 +39,9 @@ export interface ToolCall {
 }
 
 export interface DynamicView {
-    type: 'table' | 'card' | 'list' | 'form' | 'chart' | 'empty';
+    type: 'table' | 'card' | 'list' | 'form' | 'chart' | 'gallery' | 'empty';
     title?: string;
+    subtitle?: string;
     data?: unknown;
     columns?: Column[];
     actions?: Action[];
