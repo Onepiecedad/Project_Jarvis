@@ -1,26 +1,11 @@
-# Use the official Agent Zero image as base
+# Use the official Agent Zero image directly
+# All customizations will be done via environment variables and runtime config
 FROM agent0ai/agent-zero:latest
 
-# Set working directory
-WORKDIR /a0
+# Railway uses PORT env variable, Agent Zero uses port 80
+# We'll set up the port mapping in railway.toml
 
-# Copy JARVIS customizations from root (these exist in the repo)
-# Prompts (JARVIS identity and system prompts)
-COPY prompts/ /a0/prompts/
+# The base image already has everything configured
+# No changes needed - let it run as-is
 
-# Custom agents (Research, Writer, Ops)
-COPY agents/ /a0/agents/
-
-# Custom Python tools and helpers (Supabase integration, etc.)
-COPY python/ /a0/python/
-
-# Custom instruments if any
-COPY instruments/ /a0/instruments/
-
-# Supabase migrations and config
-COPY supabase/ /a0/supabase/
-
-# Expose port 80 (Railway will map this automatically)
 EXPOSE 80
-
-# The base image already has the entrypoint configured
