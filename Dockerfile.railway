@@ -4,18 +4,18 @@ FROM agent0ai/agent-zero:latest
 # Set working directory
 WORKDIR /a0
 
-# Copy JARVIS customizations from docker/run/agent-zero
+# Copy JARVIS customizations from root (these exist in the repo)
 # Prompts (JARVIS identity and system prompts)
-COPY docker/run/agent-zero/prompts/ /a0/prompts/
+COPY prompts/ /a0/prompts/
 
 # Custom agents (Research, Writer, Ops)
-COPY docker/run/agent-zero/agents/ /a0/agents/
+COPY agents/ /a0/agents/
 
 # Custom Python tools and helpers (Supabase integration, etc.)
-COPY docker/run/agent-zero/python/ /a0/python/
+COPY python/ /a0/python/
 
 # Custom instruments if any
-COPY docker/run/agent-zero/instruments/ /a0/instruments/
+COPY instruments/ /a0/instruments/
 
 # Supabase migrations and config
 COPY supabase/ /a0/supabase/
